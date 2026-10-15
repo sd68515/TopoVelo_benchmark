@@ -159,7 +159,6 @@ class SCGraphData():
                 Whether to normalize spatial coordinates. Defaults to False.
         """
         self.N, self.G = data.shape[0], data.shape[1]//2
-        self.graph = graph.A
         self.edges = np.stack(graph.nonzero())
         if edge_attr is not None:
             edge_attr_ = self._extract_edge_attr(edge_attr)

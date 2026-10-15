@@ -1110,6 +1110,7 @@ class VAE(VanillaVAE):
             "early_stop": 50,
             "early_stop_refine": 10,
             "early_stop_thred": early_stop_thred,
+            "empty_cache_each_batch": False,
             "train_test_split": train_test_split,
             "neg_slope": 0.0,
             "train_ton": (init_method != 'tprior'),
@@ -1654,7 +1655,8 @@ class VAE(VanillaVAE):
                                                                  detach=True)
                 uhat[batch_idx] = _uhat.to(device).float()
                 shat[batch_idx] = _shat.to(device).float()
-                torch.cuda.empty_cache()
+                if self.config["empty_cache_each_batch"] and self.device.type == "cuda":
+                    torch.cuda.empty_cache()
                 if return_vel:
                     vu[batch_idx] = _vu.to(device).float()
                     vs[batch_idx] = _vs.to(device).float()
@@ -2039,9 +2041,10 @@ class VAE(VanillaVAE):
         index_loader = DataLoader(Index(len(self.train_idx)),
                                   batch_size=self.config["batch_size"],
                                   shuffle=True,
-                                  pin_memory=True)
+                                  pin_memory=self.device.type == "cuda")
         for i, index_batch in enumerate(index_loader):
-            torch.cuda.empty_cache()
+            if self.config["empty_cache_each_batch"] and self.device.type == "cuda":
+                torch.cuda.empty_cache()
 
             batch_sample = self.train_idx[index_batch]
             if self.counter == 1 or self.counter % self.config["test_iter"] == 0:
@@ -2158,9 +2161,10 @@ class VAE(VanillaVAE):
         index_loader = DataLoader(Index(len(self.train_idx)),
                                   batch_size=self.config["batch_size"],
                                   shuffle=True,
-                                  pin_memory=True)
+                                  pin_memory=self.device.type == "cuda")
         for i, index_batch in enumerate(index_loader):
-            torch.cuda.empty_cache()
+            if self.config["empty_cache_each_batch"] and self.device.type == "cuda":
+                torch.cuda.empty_cache()
             batch_sample = self.train_idx[index_batch]
             if self.counter == 1 or self.counter % self.config["test_iter"] == 0:
                 mse_test = self.test_spatial(self.counter, True)
@@ -2439,14 +2443,14 @@ class VAE(VanillaVAE):
         """
         if self.is_discrete:
             U, S = np.array(adata.layers['unspliced'].todense()), np.array(adata.layers['spliced'].todense())
-            X = np.concatenate((U, S), 1).astype(int)
+            X = np.concatenate((U, S), 1).astype(np.float32, copy=False)
         elif us_keys is not None:
             U, S = adata.layers[us_keys[0]], adata.layers[us_keys[1]]
             if isinstance(U, csr_matrix) or isinstance(U, csc_matrix) or isinstance(U, coo_matrix):
                 U, S = U.A, S.A
-            X = np.concatenate((U, S), 1)
+            X = np.concatenate((U, S), 1).astype(np.float32, copy=False)
         else:
-            X = np.concatenate((adata.layers['Mu'], adata.layers['Ms']), 1).astype(float)
+            X = np.concatenate((adata.layers['Mu'], adata.layers['Ms']), 1).astype(np.float32, copy=False)
         try:
             self.x_embed = adata.obsm[f"X_{embed}"]
         except KeyError:

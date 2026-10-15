@@ -1,3 +1,13 @@
+import warnings
+
+import matplotlib.cbook as cbook
+
+# scvelo 0.2.5 refers to this matplotlib alias during import. Matplotlib
+# removed it in 3.8; restoring the warning class keeps imports working without
+# changing TopoVelo's calculations.
+if not hasattr(cbook, "mplDeprecation"):
+    cbook.mplDeprecation = DeprecationWarning
+
 from topovelo.model import VAE, sample_genes
 from topovelo.model.model_util import get_spatial_tprior
 from topovelo.simulation import simulate, to_low_res

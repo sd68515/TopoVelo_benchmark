@@ -1,6 +1,7 @@
 """Model utility functions
 """
 import multiprocessing
+import os
 from joblib import Parallel, delayed
 import numpy as np
 import logging
@@ -18,6 +19,21 @@ from scipy.spatial.distance import cosine
 from scipy.sparse import csr_array, csr_matrix
 from .scvelo_util import mRNA, vectorize, tau_inv, R_squared, test_bimodality, leastsq_NxN
 NUM_CORES = multiprocessing.cpu_count()
+
+
+def _parallel_jobs(n_tasks):
+    """Bound worker threads to avoid one process per host CPU and large IPC copies."""
+    configured = os.environ.get("TOPOVELO_N_JOBS")
+    if configured is not None:
+        try:
+            n_jobs = int(configured)
+        except ValueError as exc:
+            raise ValueError("TOPOVELO_N_JOBS must be a positive integer") from exc
+        if n_jobs < 1:
+            raise ValueError("TOPOVELO_N_JOBS must be a positive integer")
+    else:
+        n_jobs = min(8, NUM_CORES)
+    return min(n_jobs, max(1, n_tasks))
 
 ###################################################################################
 # Build spatial graph
@@ -616,8 +632,9 @@ def init_params_parallel(
             return np.ones(4), np.zeros(len(s)), np.max(u), np.max(s), 0.0
 
     print('Estimating ODE parameters...')
-    # n_jobs = min(max(2, ngene // 500), NUM_CORES)
-    results = Parallel(n_jobs=-1)(delayed(process_gene)(i) for i in trange(ngene))
+    results = Parallel(n_jobs=_parallel_jobs(ngene), prefer="threads")(
+        delayed(process_gene)(i) for i in trange(ngene)
+    )
     for i, res in enumerate(results):
         params[i, :], T[i, :], U0[i], S0[i], Ts[i] = res
 
@@ -776,8 +793,9 @@ def reinit_params_parallel(U, S, t, ts):
         return alpha_g, beta_g, gamma_g, ton_g
 
     # Use joblib to parallelize the computation across genes
-    # n_jobs = min(max(2, G//500), NUM_CORES)
-    results = Parallel(n_jobs=-1)(delayed(process_single_gene)(i) for i in trange(G))
+    results = Parallel(n_jobs=_parallel_jobs(G), prefer="threads")(
+        delayed(process_single_gene)(i) for i in trange(G)
+    )
     
     alpha = np.zeros(G)
     beta = np.zeros(G)
@@ -1571,8 +1589,7 @@ def knnx0_index_parallel(
         t, t_query = _hist_equal(t, t_query)
 
     bt = BallTree(xy)
-    # n_jobs = min(max(2, Nq//50000), NUM_CORES)
-    results = Parallel(n_jobs=-1)(
+    results = Parallel(n_jobs=_parallel_jobs(Nq), prefer="threads")(
         delayed(_process_single_query)(
             i, bt, t, t_query, xy_query, radius, z, z_query,
             adaptive, std_t, dt, k, forward, tmin, tmax
